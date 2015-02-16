@@ -20,6 +20,7 @@ from pycoin.key import Key
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.networks import NETWORK_NAMES
 from pycoin.tx.pay_to import ScriptMultisig, build_p2sh_lookup
+from pycoin.tx.pay_to import address_for_pay_to_script
 from pycoin.tx import Tx
 from pycoin.tx.tx_utils import LazySecretExponentDB
 from pycoin.tx.tx_utils import create_tx
@@ -30,28 +31,6 @@ ScriptMultisig._dummy_signature = lambda x, y: "\x00"
 
 
 URL = "https://www.bitgo.com/api/v1"
-
-def script(num_sigs, all_keys, path):
-    """
-    Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden.
-    :param: path: the derivation path
-    :type: path: str
-    :return: the script
-    :rtype: ScriptMultisig
-    """
-    subkeys = [key.subkey_for_path(path) for key in all_keys]
-    secs = [key.sec() for key in subkeys]
-    secs.sort()
-    script = ScriptMultisig(num_sigs, secs)
-    print b2h(encoding.hash160(script.script()))
-    return script
-
-def local_sign(tx, scripts, keys, p2sh_lookup):
-    #lookup = build_p2sh_lookup([script.script() for script in scripts])
-    db = LazySecretExponentDB(map(lambda k: k.wif(), keys), {})
-    # FIXME hack to work around broken p2sh signing in pycoin
-    #tx.unspents[0].script = script.script()
-    return tx.sign(db, p2sh_lookup=p2sh_lookup)
 
 """
 A partially signed transaction looks like:
@@ -230,7 +209,6 @@ class BitGo(object):
 
         balance = 0
         for tx in r.json()['unspents']:
-            print tx
             balance += tx['value']
 
         return balance
@@ -280,11 +258,19 @@ class BitGo(object):
             )
 
         usableKeychain = False
-        for k in wallet['private']['keychains']:
-            keychain = self.get_keychain(k['xpub'])
-            if 'encryptedXprv' in keychain:
-                usableKeychain = True
-                break
+        spendables = []
+        chain_paths = []
+        p2sh = []
+        payables = [(address, amount)]
+        keychain_path = ""
+
+        for keychain in wallet['private']['keychains']:
+            keychain_path = keychain['path'][1:]
+            keychain = self.get_keychain(keychain['xpub'])
+            if 'encryptedXprv' not in keychain:
+                continue
+            usableKeychain = True
+            break
 
         if not usableKeychain:
             raise BitGoError("didn't found a spendable keychain")
@@ -293,56 +279,50 @@ class BitGo(object):
         #add base64 paddings
         for k in ['iv', 'salt', 'ct']:
             data[k] = data[k] + "=="
-
         cipher = sjcl.SJCL()
-        print keychain
         xprv = cipher.decrypt(data, passcode)
-        print xprv
-
-        keychain_path = keychain['path']
-
-        print "keychain_path", keychain_path
 
         unspents = self.get_unspents(wallet_id)
-
-        spendables = []
-        chain_paths = []
-        p2sh = []
-        for d in unspents['unspents']:
-            chain_paths.append(keychain_path + d['chainPath'])
+        total_value = 0
+        for d in unspents['unspents'][::-1]:
+            path = keychain_path + d['chainPath']
+            chain_paths.append(path)
             p2sh.append(h2b(d["redeemScript"]))
-            spendables.append(Spendable.from_dict({"coin_value": d['value'],
-                                                   "script_hex": d['script'],
-                                                   "tx_hash_hex": d['tx_hash'],
-                                                   "tx_out_index": d['tx_output_n']}))
+            spendables.append(Spendable(d["value"],
+                                  h2b(d["script"]),
+                                  h2b_rev(d["tx_hash"]),
+                                  d["tx_output_n"]))
+
+            total_value += d['value']
+            if total_value > amount:
+                break
+
+        if total_value > (amount + 10000):
+            #add a change address
+            #TODO: create address
+            payables.append(d['address'])
 
         p2sh_lookup = build_p2sh_lookup(p2sh)
-        pub_keys = []
-        for keychain in wallet['private']['keychains']:
-            pub_keys.append(BIP32Node.from_text(keychain['xpub']))
 
-        priv_key = BIP32Node.from_text(xprv)
-        priv_sub_keys = []
-        scripts = []
 
-        for path in chain_paths:
-            print path
-            if path.startswith("m/"):
-                path = path[2:]
-            scripts.append(script(3, pub_keys, path))
-            priv_sub_keys.append(priv_key.subkey_for_path(path))
+        spendable_keys = []
 
-        tx = create_tx(spendables, [(address, amount)])
+        priv_key = BIP32Node.from_hwif(xprv)
 
-        tx = local_sign(tx, scripts, priv_sub_keys, p2sh_lookup)
+        spendable_keys = [priv_key.subkey_for_path(path) for path in chain_paths]
 
-        print tx.as_hex()
+        hash160_lookup = build_hash160_lookup([key.secret_exponent() for key in spendable_keys])
+
+        tx = create_tx(spendables, payables)
+
+        tx.sign(hash160_lookup=hash160_lookup, p2sh_lookup=p2sh_lookup)
 
         r = requests.post(URL + '/tx/send', {
                 'tx': tx.as_hex(),
             }, headers={
                 'Authorization': 'Bearer %s' % self.access_token,
             })
+
         print r.content
 
 if __name__ == '__main__':
@@ -359,9 +339,6 @@ if __name__ == '__main__':
                       help="wallet id")
 
     (options, args) = parser.parse_args()
-
-    print options
-    print args
 
     bitgo = BitGo(access_token=options.access_token)
 
@@ -399,7 +376,7 @@ if __name__ == '__main__':
         if len(args) != 3:
             print "address and amount are required"
             sys.exit(1)
-        otp = getpass.getpass('otp: ')
+        otp = raw_input('otp: ')
         passcode = getpass.getpass('passcode: ')
         bitgo.unlock(otp)
         bitgo.send(options.wallet_id, passcode, args[1], float(args[2]) * 10**8)
