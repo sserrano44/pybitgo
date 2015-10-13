@@ -2,12 +2,25 @@
 
 Simple API implementation for BitGo Wallets
 
+A partially signed transaction looks like:
+    OP_0 signature OP_0 redeem_script
+where the second OP_0 is a placeholder. This appears to be the de facto
+standard. However, pycoin does not use this at the moment. See
+https://github.com/richardkiss/pycoin/issues/74
+Starting with pycoin version 0.53, this can be easily remedied with the
+following code:
+    ScriptMultisig._dummy_signature = lambda x, y: "\x00"
+However, there is a bug in version 0.52 which prevents this from working.
+Below is a workaround.
+
 """
 import requests
 import json
-import sjcl_mod as sjcl
+
+from . import sjcl
 
 from Crypto.Random import random
+
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.tx.Spendable import Spendable
 from pycoin.tx import tx_utils
@@ -27,29 +40,17 @@ from pycoin.tx.tx_utils import create_tx
 from pycoin.services import get_tx_db
 from pycoin.tx import Spendable
 
-ScriptMultisig._dummy_signature = lambda x, y: "\x00"
-
-
-URL = "https://www.bitgo.com/api/v1"
-
-"""
-A partially signed transaction looks like:
-    OP_0 signature OP_0 redeem_script
-where the second OP_0 is a placeholder. This appears to be the de facto
-standard. However, pycoin does not use this at the moment. See
-https://github.com/richardkiss/pycoin/issues/74
-Starting with pycoin version 0.53, this can be easily remedied with the
-following code:
-    ScriptMultisig._dummy_signature = lambda x, y: "\x00"
-However, there is a bug in version 0.52 which prevents this from working.
-Below is a workaround.
-"""
 from pycoin.tx.pay_to.ScriptMultisig import ScriptMultisig
 from pycoin.tx.pay_to import SolvingError
 from pycoin.tx.script import tools
 from pycoin.tx.script.vm import parse_signature_blob
 from pycoin import ecdsa
 from pycoin import encoding
+
+ScriptMultisig._dummy_signature = lambda x, y: "\x00"
+
+PRODUCTION_URL = "https://www.bitgo.com/api/v1"
+TEST_URL = "https://test.bitgo.com/api/v1"
 
 def solve(self, **kwargs):
     """
@@ -169,8 +170,13 @@ class NotActiveWallet(BitGoError):
 
 class BitGo(object):
 
-    def __init__(self, access_token=None):
+    def __init__(self, access_token=None, production=True):
         self.access_token = access_token
+        self.production=production
+        if production:
+            self.url = PRODUCTION_URL
+        else:
+            self.url = TEST_URL
 
     def get_access_token(self, username, password, otp=None):
         params = {
@@ -180,7 +186,7 @@ class BitGo(object):
         if otp:
             params['otp'] = otp
 
-        r = requests.post(URL + '/user/login', params)
+        r = requests.post(self.url + '/user/login', params)
 
         if r.status_code != 200:
             raise Exception('failed request to bitgo %s' % r.content)
@@ -189,21 +195,21 @@ class BitGo(object):
 
     def get_wallets(self):
 
-        r = requests.get(URL + '/wallet', headers={
+        r = requests.get(self.url + '/wallet', headers={
           'Authorization': 'Bearer %s' % self.access_token,
         })
 
         return r.json()
 
     def get_wallet(self, wallet_id):
-        r = requests.get(URL + '/wallet/' + wallet_id, headers={
+        r = requests.get(self.url + '/wallet/' + wallet_id, headers={
           'Authorization': 'Bearer %s' % self.access_token,
         })
         return r.json()
 
     def get_balance(self, wallet_id):
 
-        r = requests.get(URL + '/wallet/%s/unspents' % wallet_id, headers={
+        r = requests.get(self.url + '/wallet/%s/unspents' % wallet_id, headers={
           'Authorization': 'Bearer %s' % self.access_token,
         })
 
@@ -214,19 +220,19 @@ class BitGo(object):
         return balance
 
     def get_keychain(self, xpub):
-        r = requests.post(URL + '/keychain/%s' % xpub, headers={
+        r = requests.post(self.url + '/keychain/%s' % xpub, headers={
           'Authorization': 'Bearer %s' % self.access_token,
         })
         return r.json()
 
     def get_unspents(self, wallet_id):
-        r = requests.get(URL + '/wallet/%s/unspents' % wallet_id, headers={
+        r = requests.get(self.url + '/wallet/%s/unspents' % wallet_id, headers={
           'Authorization': 'Bearer %s' % self.access_token,
         })
         return r.json()
 
     def unlock(self, otp, duration=60):
-        r = requests.post(URL + '/user/unlock', {
+        r = requests.post(self.url + '/user/unlock', {
                 'otp': otp,
                 'duration': duration
             }, headers={
@@ -235,7 +241,7 @@ class BitGo(object):
         if r.status_code != 200:
             raise BitGoError('unable to unlock\n %s' % r.content)
 
-    def send(self, wallet_id, passcode, address, amount):
+    def send(self, wallet_id, passcode, address, amount, message=''):
         """
         Send bitcoins to address
 
@@ -244,7 +250,6 @@ class BitGo(object):
         :param amount: btc amount in satoshis
         :return: boolean
         """
-
         wallet = self.get_wallet(wallet_id)
         if not wallet['spendingAccount']:
             raise NotSpendableWallet()
@@ -304,7 +309,6 @@ class BitGo(object):
 
         p2sh_lookup = build_p2sh_lookup(p2sh)
 
-
         spendable_keys = []
 
         priv_key = BIP32Node.from_hwif(xprv)
@@ -317,13 +321,21 @@ class BitGo(object):
 
         tx.sign(hash160_lookup=hash160_lookup, p2sh_lookup=p2sh_lookup)
 
-        r = requests.post(URL + '/tx/send', {
+        r = requests.post(self.url + '/tx/send', {
                 'tx': tx.as_hex(),
+                'message': message
             }, headers={
                 'Authorization': 'Bearer %s' % self.access_token,
             })
 
-        print r.content
+        return r.json()
+
+    def send_otp(self):
+        r = requests.post(self.url + '/user/sendotp', headers={
+          'Authorization': 'Bearer %s' % self.access_token,
+        })
+        return r.json()
+
 
 if __name__ == '__main__':
     import getpass

@@ -1,2 +1,3 @@
 requests
-https://ftp.dlitz.net/pub/dlitz/crypto/pycrypto/pycrypto-2.7a1.tar.gz
+pycryptodome
+pycoin

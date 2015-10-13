@@ -10,5 +10,6 @@ setup(
   download_url = 'https://github.com/sserrano44/pybitgo/archive/master.tar.gz',
   keywords = ['bitcoin', 'bitgo'], # arbitrary keywords
   classifiers = [],
+  install_requires=["pycryptodome", "requests", "pycoin"]
 )
 
