@@ -207,7 +207,7 @@ class BitGo(object):
         })
         return r.json()
 
-    def get_balance(self, wallet_id):
+    def get_balance(self, wallet_id, confirmations=0):
 
         r = requests.get(self.url + '/wallet/%s/unspents' % wallet_id, headers={
           'Authorization': 'Bearer %s' % self.access_token,
@@ -215,7 +215,8 @@ class BitGo(object):
 
         balance = 0
         for tx in r.json()['unspents']:
-            balance += tx['value']
+            if tx['confirmations'] >= confirmations:
+                balance += tx['value']
 
         return balance
 
