@@ -14,7 +14,7 @@ setup(
             ]
     },
     url='https://github.com/sserrano44/pybitgo',
-    download_url='https://github.com/sserrano44/pybitgo/archive/master.tar.gz',
+    download_url='https://github.com/sserrano44/pybitgo/tarball/0.1',
     keywords=['bitcoin', 'bitgo'],
     classifiers=[
         'Programming Language :: Python :: 2.7',
