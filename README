@@ -1,13 +1,11 @@
 Very alpha beta version of a bitgo python library 
 
-
 BONUS: some command-line functionality
 
 # get access token
-python bitgo/bitgo.py access_token
-
-
+bitgo access_token
 
 # send
-python bitgo/bitgo.py -a access_token -w wallet_id send 14Ys1oyysUH42rktapekucHYSqcW4Fse2K 0.01 
+bitgo -a access_token -w wallet_id send 14Ys1oyysUH42rktapekucHYSqcW4Fse2K 0.01 
+
 
