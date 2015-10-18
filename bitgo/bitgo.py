@@ -242,7 +242,28 @@ class BitGo(object):
         if r.status_code != 200:
             raise BitGoError('unable to unlock\n %s' % r.content)
 
-    def send(self, wallet_id, passcode, address, amount, message=''):
+    def create_address(self, wallet_id, chain=0):
+        """
+
+        :param wallet_id: the wallet id :P
+        :param chain: 0 for main or 1 change
+        :return:
+        """
+        create_url = "%s/wallet/%s/address/%s" % (
+                self.url,
+                wallet_id,
+                chain
+            )
+        print create_url
+        r = requests.post(create_url, headers={
+                'Authorization': 'Bearer %s' % self.access_token,
+            })
+        if r.status_code != 200:
+            raise BitGoError('unable to create address\n %s' % r.content)
+        data = r.json()
+        return data['address']
+
+    def send(self, wallet_id, passcode, address, amount, message='', fee=10000):
         """
         Send bitcoins to address
 
@@ -263,6 +284,7 @@ class BitGo(object):
                                  (wallet['confirmedBalance'], amount)
             )
 
+        change_address = self.create_address(wallet_id, chain=1)
         usableKeychain = False
         spendables = []
         chain_paths = []
@@ -303,10 +325,10 @@ class BitGo(object):
             if total_value > amount:
                 break
 
-        if total_value > (amount + 10000):
+        if total_value > (amount + fee):
             #add a change address
             #TODO: create address
-            payables.append(d['address'])
+            payables.append(change_address)
 
         p2sh_lookup = build_p2sh_lookup(p2sh)
 
