@@ -1,9 +1,11 @@
 from setuptools import setup
 
+version = "0.1.1"
+
 setup(
     name='bitgo',
     packages=['bitgo'],
-    version='0.1',
+    version=version,
     description='alpha version of a bitgo python library',
     author='Sebastian Serrano',
     author_email='sebastian@bitpagos.com',
@@ -14,7 +16,7 @@ setup(
             ]
     },
     url='https://github.com/sserrano44/pybitgo',
-    download_url='https://github.com/sserrano44/pybitgo/tarball/0.1',
+    download_url='https://github.com/sserrano44/pybitgo/tarball/%s' % version,
     keywords=['bitcoin', 'bitgo'],
     classifiers=[
         'Programming Language :: Python :: 2.7',
