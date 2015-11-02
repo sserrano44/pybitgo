@@ -279,6 +279,9 @@ class BitGo(object):
         if not wallet['isActive']:
             raise NotActiveWallet()
 
+        if amount < 10000:
+            raise Exception('amount to small')
+
         if wallet['confirmedBalance'] < amount:
             raise NotEnoughFunds('Not enough funds: balance %s amount %s' %
                                  (wallet['confirmedBalance'], amount)
