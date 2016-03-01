@@ -263,15 +263,35 @@ class BitGo(object):
         data = r.json()
         return data['address']
 
-    def send(self, wallet_id, passcode, address, amount, message='', fee=10000):
+    def calculate_fee(self, inputs, outputs, num_blocks=2):
+        """
+
+        :param inputs: number of inputs
+        :param outputs: number of outputs
+        :return: recommended fee in satoshis
+        """
+        fees_url = "%s/tx/fee?numBlocks=%s" % (self.url, num_blocks)
+        r = requests.get(fees_url)
+        fee_per_kb = r.json()['feePerKb']
+
+        # poor size estimation - FIXME
+        kbytes = 210 * (inputs+outputs) / 1000.0
+
+        return int(fee_per_kb * kbytes)
+
+    def send(self, wallet_id, passcode, address, amount, message='', fee=None, fan_unspend=10):
         """
         Send bitcoins to address
 
         :param wallet_id: bitgo wallet id
         :param address: bitcoin address
         :param amount: btc amount in satoshis
+        :param split: create new outputs if needed
         :return: boolean
         """
+        MINIMAL_FEE = 20000
+        MINIMAL_SPLIT = 10000000
+
         wallet = self.get_wallet(wallet_id)
         if not wallet['spendingAccount']:
             raise NotSpendableWallet()
@@ -328,10 +348,19 @@ class BitGo(object):
             if total_value > amount:
                 break
 
-        if total_value > (amount + fee):
-            #add a change address
-            #TODO: create address
-            payables.append(change_address)
+        # make many outputs?
+        if len(unspents['unspents']) < 5 and (total_value > (amount + MINIMAL_SPLIT)) and fan_unspend > 0:
+            fee = self.calculate_fee(len(spendables), fan_unspend)
+            value = (total_value - amount - fee) / fan_unspend
+            for i in range(fan_unspend):
+                payables.append((change_address, value))
+        elif total_value > (amount + MINIMAL_FEE):
+            # add a change address
+            if fee is None:
+                fee = self.calculate_fee(len(spendables), 2)
+            value = total_value - amount - fee
+            if value > 10000: #avoid dust
+                payables.append((change_address, value))
 
         p2sh_lookup = build_p2sh_lookup(p2sh)
 
