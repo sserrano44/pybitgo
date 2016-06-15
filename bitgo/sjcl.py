@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
@@ -53,7 +54,7 @@ import base64
 
 def truncate_iv(iv, ol, tlen):  # ol and tlen in bits
     ivl = len(iv)  # iv length in bytes
-    ol = int((ol - tlen) / 8)
+    ol = (ol - tlen) / 8
 
     # "compute the length of the length" (see ccm.js)
     L = 2
@@ -84,19 +85,6 @@ class SJCL():
         self.mac_size = 8  # bytes; mac = message authentication code (MAC)
         self.prf = lambda p, s: HMAC.new(p, s, SHA256).digest()
 
-    def decode_base64(self, data):
-        """
-        Decode base64, padding being optional (SJCL convention).
-        Also converts input string to binary.
-        :param data: Base64 data as an ASCII byte string
-        :returns: The decoded byte string.
-        """
-        data = data.encode("utf-8")
-        missing_padding = 4 - len(data) % 4
-        if missing_padding:
-            data += b'='* missing_padding
-        return base64.b64decode(data)
-
     def decrypt(self, data, passphrase):
         check_mode_ccm()  # check ccm support
 
@@ -115,9 +103,9 @@ class SJCL():
         if data["ts"] != self.tag_size * 8:
             raise Exception("desired tag length != %d" % (self.tag_size * 8))
 
-        salt = self.decode_base64(data["salt"])
+        salt = base64.b64decode(data["salt"])
 
-    #    print("salt", hex_string(salt))
+    #    print "salt", hex_string(salt)
         if len(salt) != self.salt_size:
             raise Exception("salt should be %d bytes long" % self.salt_size)
 
@@ -132,24 +120,24 @@ class SJCL():
             dkLen=dkLen,
             prf=self.prf
         )
-#        print("key", hex_string(key))
+#        print "key", hex_string(key)
 
-        ciphertext = self.decode_base64(data["ct"])
-        iv = self.decode_base64(data["iv"])
-#        print(AES.block_size)
+        ciphertext = base64.b64decode(data["ct"])
+        iv = base64.b64decode(data["iv"])
+#        print AES.block_size
 
         nonce = truncate_iv(iv, len(ciphertext)*8, data["ts"])
 
         # split tag from ciphertext (tag was simply appended to ciphertext)
         mac = ciphertext[-(data["ts"]//8):]
-#        print(len(ciphertext))
+#        print len(ciphertext)
         ciphertext = ciphertext[:-(data["ts"]//8)]
-#        print(len(ciphertext))
-#        print(len(tag))
+#        print len(ciphertext)
+#        print len(tag)
 
-#        print("len", len(nonce))
+#        print "len", len(nonce)
         cipher = AES.new(key, AES.MODE_CCM, nonce, mac_len=self.mac_size)
-        plaintext = cipher.decrypt(ciphertext).decode("utf-8")
+        plaintext = cipher.decrypt(ciphertext)
 
         cipher.verify(mac)
 
@@ -167,7 +155,7 @@ class SJCL():
 
         # TODO plaintext padding?
         nonce = truncate_iv(iv, len(plaintext) * 8, self.tag_size * 8)
-#        print(len(nonce))
+    #    print len(nonce)
 
         cipher = AES.new(
             key,
@@ -176,17 +164,17 @@ class SJCL():
             mac_len=self.mac_size
         )
 
-        ciphertext = cipher.encrypt(plaintext.encode("utf-8"))
+        ciphertext = cipher.encrypt(plaintext)
         mac = cipher.digest()
 
         ciphertext = ciphertext + mac
 
         return {
-            "salt": base64.b64encode(salt).decode("utf-8"),
+            "salt": base64.b64encode(salt),
             "iter": count,
             "ks": dkLen*8,
-            "ct": base64.b64encode(ciphertext).decode("utf-8"),
-            "iv": base64.b64encode(iv).decode("utf-8"),
+            "ct": base64.b64encode(ciphertext),
+            "iv": base64.b64encode(iv),
             "cipher": "aes",
             "mode": "ccm",
             "adata": "",

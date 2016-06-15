@@ -41,7 +41,7 @@ from pycoin.services import get_tx_db
 from pycoin.tx import Spendable
 
 from pycoin.tx.pay_to.ScriptMultisig import ScriptMultisig
-from pycoin.tx.pay_to import SolvingError
+from pycoin.tx.exceptions import SolvingError
 from pycoin.tx.script import tools
 from pycoin.tx.script.check_signature import parse_signature_blob
 from pycoin import ecdsa
