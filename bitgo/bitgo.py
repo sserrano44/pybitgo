@@ -147,7 +147,7 @@ def sign_tx_in(self, hash160_lookup, tx_in_idx, tx_out_script,
         script_to_hash = p2sh_lookup[hash160]
 
     signature_for_hash_type_f = lambda hash_type: self.signature_hash(tx_out_script, tx_in_idx, hash_type)
-    if tx_in.verify(tx_out_script, signature_for_hash_type_f):
+    if tx_in.verify(tx_out_script, signature_for_hash_type_f, lock_time=kwargs.get('lock_time')):
         return
     sign_value = self.signature_hash(script_to_hash, tx_in_idx, hash_type=hash_type)
     the_script = script_obj_from_script(tx_out_script)
@@ -254,7 +254,7 @@ class BitGo(object):
                 wallet_id,
                 chain
             )
-        print create_url
+
         r = requests.post(create_url, headers={
                 'Authorization': 'Bearer %s' % self.access_token,
             })
@@ -293,6 +293,7 @@ class BitGo(object):
         MINIMAL_SPLIT = 10000000
 
         wallet = self.get_wallet(wallet_id)
+
         if not wallet['spendingAccount']:
             raise NotSpendableWallet()
 

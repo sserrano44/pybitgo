@@ -68,24 +68,24 @@ def main():
         print bitgo.get_wallets()
     elif action == 'get_balance':
         if options.wallet_id is None:
-            print "option --wallet_id is required for get_balance"
+            print "option -w {{ wallet_id }} is required for get_balance"
             sys.exit(1)
         print bitgo.get_balance(options.wallet_id) / float(10**8)
     elif action == 'get_wallet':
         if options.wallet_id is None:
-            print "option --wallet_id is required for get_balance"
+            print "option -w {{ wallet_id }} is required for get_wallet"
             sys.exit(1)
         otp = getpass.getpass('otp: ')
         bitgo.unlock(otp)
         print bitgo.get_wallet(options.wallet_id)
     elif action == 'get_unspents':
         if options.wallet_id is None:
-            print "option --wallet_id is required for get_balance"
+            print "option -w {{ wallet_id }} is required for get_unspents"
             sys.exit(1)
         print bitgo.get_unspents(options.wallet_id)
     elif action == 'send':
         if options.wallet_id is None:
-            print "option --wallet_id is required for get_balance"
+            print "option -w {{ wallet_id }} is required for send"
             sys.exit(1)
         if len(args) != 3:
             print "address and amount are required"
@@ -93,7 +93,7 @@ def main():
         otp = raw_input('otp: ')
         passcode = getpass.getpass('passcode: ')
         bitgo.unlock(otp)
-        bitgo.send(options.wallet_id, passcode, args[1], float(args[2]) * 10**8)
+        print bitgo.send(options.wallet_id, passcode, args[1], float(args[2]) * 10**8)
     else:
         print "invalid command"
 
