@@ -335,8 +335,10 @@ class BitGo(object):
         xprv = cipher.decrypt(data, passcode)
 
         unspents = self.get_unspents(wallet_id)
+        unspents = filter(lambda u: u['confirmations'] > 0, unspents['unspents'][::-1])
+
         total_value = 0
-        for d in unspents['unspents'][::-1]:
+        for d in unspents:
             path = keychain_path + d['chainPath']
             chain_paths.append(path)
             p2sh.append(h2b(d["redeemScript"]))
@@ -350,7 +352,7 @@ class BitGo(object):
                 break
 
         # make many outputs?
-        if len(unspents['unspents']) < 5 and (total_value > (amount + MINIMAL_SPLIT)) and fan_unspend > 0:
+        if len(unspents) < 5 and (total_value > (amount + MINIMAL_SPLIT)) and fan_unspend > 0:
             fee = self.calculate_fee(len(spendables), fan_unspend)
             value = (total_value - amount - fee) / fan_unspend
             for i in range(fan_unspend):
